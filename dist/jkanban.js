@@ -264,611 +264,6 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
 };
 }).call(this,require("timers").setImmediate,require("timers").clearImmediate)
 },{"process/browser.js":1,"timers":2}],3:[function(require,module,exports){
-/**
- * jKanban
- * Vanilla Javascript plugin for manage kanban boards
- *
- * @site: http://www.riccardotartaglia.it/jkanban/
- * @author: Riccardo Tartaglia
- */
-
-//Require dragula
-var dragula = require('dragula');
-
-(function () {
-
-    this.jKanban = function () {
-        var self = this;
-        this.element = '';
-        this.container = '';
-        this.boardContainer = [];
-        this.dragula = dragula;
-        this.drake = '';
-        this.drakeBoard = '';
-        this.addItemButton = false;
-        this.buttonContent = '+';
-        defaults = {
-            element: '',
-            gutter: '15px',
-            widthBoard: '250px',
-            responsive: '700',
-            responsivePercentage: false,
-            boards: [],
-            dragBoards: true,
-            addItemButton: false,
-            buttonContent: '+',
-            dragEl: function (el, source) {
-            },
-            dragendEl: function (el) {
-            },
-            dropEl: function (el, target, source, sibling) {
-            },
-            dragBoard: function (el, source) {
-            },
-            dragendBoard: function (el) {
-            },
-            dropBoard: function (el, target, source, sibling) {
-            },
-            click: function (el) {
-            },
-            buttonClick: function (el, boardId) {
-            }
-        };
-
-        if (arguments[0] && typeof arguments[0] === "object") {
-            this.options = __extendDefaults(defaults, arguments[0]);
-        }
-
-        this.init = function () {
-            //set initial boards
-            __setBoard();
-            //set drag with dragula
-            if (window.innerWidth > self.options.responsive) {
-
-                //Init Drag Board
-                self.drakeBoard = self.dragula([self.container], {
-                    moves: function (el, source, handle, sibling) {
-                        if (!self.options.dragBoards) return false;
-                        return (handle.classList.contains('kanban-board-header') || handle.classList.contains('kanban-title-board'));
-                    },
-                    accepts: function (el, target, source, sibling) {
-                        return target.classList.contains('kanban-container');
-                    },
-                    revertOnSpill: true,
-                    direction: 'horizontal',
-                })
-                    .on('drag', function (el, source) {
-                        el.classList.add('is-moving');
-                        self.options.dragBoard(el, source);
-                        if (typeof(el.dragfn) === 'function')
-                            el.dragfn(el, source);
-                    })
-                    .on('dragend', function (el) {
-                        el.classList.remove('is-moving');
-                        self.options.dragendBoard(el);
-                        if (typeof(el.dragendfn) === 'function')
-                            el.dragendfn(el);
-                    })
-                    .on('drop', function (el, target, source, sibling) {
-                        el.classList.remove('is-moving');
-                        self.options.dropBoard(el, target, source, sibling);
-                        if (typeof(el.dropfn) === 'function')
-                            el.dropfn(el, target, source, sibling);
-                    });
-
-                //Init Drag Item
-                self.drake = self.dragula(self.boardContainer, function () {
-                    revertOnSpill: true
-                })
-                    .on('cancel', function(el, container, source) {
-                        self.enableAllBoards();
-                    })
-                    .on('drag', function (el, source) {
-                        el.classList.add('is-moving');
-                        var boardJSON = __findBoardJSON(source.parentNode.dataset.id);
-                        if (boardJSON.dragTo !== undefined) {
-                            self.options.boards.map(function (board) {
-                                if (boardJSON.dragTo.indexOf(board.id) === -1 && board.id !== source.parentNode.dataset.id) {
-                                    self.findBoard(board.id).classList.add('disabled-board');
-                                }
-                            })
-                        }
-
-                        self.options.dragEl(el, source);
-                        if (el !== null && typeof(el.dragfn) === 'function')
-                            el.dragfn(el, source);
-                    })
-                    .on('dragend', function (el) {
-                        self.options.dragendEl(el);
-                        if (el !== null && typeof(el.dragendfn) === 'function')
-                            el.dragendfn(el);
-                    })
-                    .on('drop', function (el, target, source, sibling) {
-                        self.enableAllBoards();
-
-                        var boardJSON = __findBoardJSON(source.parentNode.dataset.id);
-                        if (boardJSON.dragTo !== undefined) {
-                            if (boardJSON.dragTo.indexOf(target.parentNode.dataset.id) === -1 && target.parentNode.dataset.id !== source.parentNode.dataset.id) {
-                                self.drake.cancel(true)
-                            }
-                        }
-                        if (el !== null) {
-                            self.options.dropEl(el, target, source, sibling);
-                            el.classList.remove('is-moving');
-                            if (typeof(el.dropfn) === 'function')
-                                el.dropfn(el, target, source, sibling);
-                        }
-                    })
-            }
-        };
-
-        this.enableAllBoards = function() {
-            var allB = document.querySelectorAll('.kanban-board');
-            if (allB.length > 0 && allB !== undefined) {
-                for (var i = 0; i < allB.length; i++) {
-                    allB[i].classList.remove('disabled-board');
-                }
-            }
-        };
-
-        this.addElement = function (boardID, element) {
-            var board = self.element.querySelector('[data-id="' + boardID + '"] .kanban-drag');
-            var nodeItem = document.createElement('div');
-            nodeItem.classList.add('kanban-item');
-            if (element.id) {
-              nodeItem.setAttribute('data-eid', element.id)
-            }
-            nodeItem.innerHTML = element.title;
-            //add function
-            nodeItem.clickfn = element.click;
-            nodeItem.dragfn = element.drag;
-            nodeItem.dragendfn = element.dragend;
-            nodeItem.dropfn = element.drop;
-            __onclickHandler(nodeItem);
-            board.appendChild(nodeItem);
-            return self;
-        };
-
-        this.addForm = function (boardID, formItem) {
-            var board = self.element.querySelector('[data-id="' + boardID + '"] .kanban-drag');
-            board.appendChild(formItem);
-            return self;
-        };
-
-        this.addBoards = function (boards) {
-            if (self.options.responsivePercentage) {
-                self.container.style.width = '100%';
-                self.options.gutter = '1%';
-                if (window.innerWidth > self.options.responsive) {
-                    var boardWidth = (100 - boards.length * 2) / boards.length;
-                } else {
-                    var boardWidth = 100 - (boards.length * 2);
-                }
-            } else {
-                var boardWidth = self.options.widthBoard;
-            }
-            var addButton = self.options.addItemButton;
-            var buttonContent = self.options.buttonContent;
-
-
-            //for on all the boards
-            for (var boardkey in boards) {
-                // single board
-                var board = boards[boardkey];
-                self.options.boards.push(board);
-
-                if (!self.options.responsivePercentage) {
-                    //add width to container
-                    if (self.container.style.width === '') {
-                        self.container.style.width = parseInt(boardWidth) + (parseInt(self.options.gutter) * 2) + 'px';
-                    } else {
-                        self.container.style.width = parseInt(self.container.style.width) + parseInt(boardWidth) + (parseInt(self.options.gutter) * 2) + 'px';
-                    }
-                }
-                //create node
-                var boardNode = document.createElement('div');
-                boardNode.dataset.id = board.id;
-                boardNode.classList.add('kanban-board');
-                //set style
-                if (self.options.responsivePercentage) {
-                    boardNode.style.width = boardWidth + '%';
-                } else {
-                    boardNode.style.width = boardWidth;
-                }
-                boardNode.style.marginLeft = self.options.gutter;
-                boardNode.style.marginRight = self.options.gutter;
-                // header board
-                var headerBoard = document.createElement('header');
-                if (board.class !== '' && board.class !== undefined)
-                    var allClasses = board.class.split(",");
-                else allClasses = [];
-                headerBoard.classList.add('kanban-board-header');
-                allClasses.map(function (value) {
-                    headerBoard.classList.add(value);
-                });
-                headerBoard.innerHTML = '<div class="kanban-title-board">' + board.title + '</div>';
-                // if add button is true, add button to the board
-                if (addButton) {
-                    var btn = document.createElement("BUTTON");
-                    var t = document.createTextNode(buttonContent);
-                    btn.setAttribute("class", "kanban-title-button btn btn-default btn-xs");
-                    btn.appendChild(t);
-                    //var buttonHtml = '<button class="kanban-title-button btn btn-default btn-xs">'+buttonContent+'</button>'
-                    headerBoard.appendChild(btn);
-                    __onButtonClickHandler(btn, board.id);
-                }
-                //content board
-                var contentBoard = document.createElement('main');
-                contentBoard.classList.add('kanban-drag');
-                //add drag to array for dragula
-                self.boardContainer.push(contentBoard);
-                for (var itemkey in board.item) {
-                    //create item
-                    var itemKanban = board.item[itemkey];
-                    var nodeItem = document.createElement('div');
-                    nodeItem.classList.add('kanban-item');
-                    nodeItem.dataset.eid = itemKanban.id;
-                    nodeItem.innerHTML = itemKanban.title;
-                    //add function
-                    nodeItem.clickfn = itemKanban.click;
-                    nodeItem.dragfn = itemKanban.drag;
-                    nodeItem.dragendfn = itemKanban.dragend;
-                    nodeItem.dropfn = itemKanban.drop;
-                    //add click handler of item
-                    __onclickHandler(nodeItem);
-                    contentBoard.appendChild(nodeItem);
-                }
-                //footer board
-                var footerBoard = document.createElement('footer');
-                //board assembly
-                boardNode.appendChild(headerBoard);
-                boardNode.appendChild(contentBoard);
-                boardNode.appendChild(footerBoard);
-                //board add
-                self.container.appendChild(boardNode);
-            }
-            return self;
-        }
-
-        this.findBoard = function (id) {
-            var el = self.element.querySelector('[data-id="' + id + '"]');
-            return el;
-        }
-
-        this.findElement = function (id) {
-            var el = self.element.querySelector('[data-eid="' + id + '"]');
-            return el;
-        }
-
-        this.getBoardElements = function (id) {
-            var board = self.element.querySelector('[data-id="' + id + '"] .kanban-drag');
-            return (board.childNodes);
-        }
-
-        this.removeElement = function (el) {
-            if (typeof(el) === 'string')
-                el = self.element.querySelector('[data-eid="' + el + '"]');
-            el.remove();
-            return self;
-        };
-
-        this.removeBoard = function (board) {
-            if (typeof(board) === 'string')
-                board = self.element.querySelector('[data-id="' + board + '"]');
-            board.remove();
-            return self;
-        }
-
-        // board button on click function
-        this.onButtonClick = function (el) {
-
-        }
-
-
-        //PRIVATE FUNCTION
-        function __extendDefaults(source, properties) {
-            var property;
-            for (property in properties) {
-                if (properties.hasOwnProperty(property)) {
-                    source[property] = properties[property];
-                }
-            }
-            return source;
-        }
-
-        function __setBoard() {
-            self.element = document.querySelector(self.options.element);
-            //create container
-            var boardContainer = document.createElement('div');
-            boardContainer.classList.add('kanban-container');
-            self.container = boardContainer;
-            //add boards
-            self.addBoards(self.options.boards);
-            //appends to container
-            self.element.appendChild(self.container);
-        };
-
-        function __onclickHandler(nodeItem, clickfn) {
-            nodeItem.addEventListener('click', function (e) {
-                e.preventDefault;
-                self.options.click(this);
-                if (typeof(this.clickfn) === 'function')
-                    this.clickfn(this);
-            });
-        }
-
-        function __onButtonClickHandler(nodeItem, boardId) {
-            nodeItem.addEventListener('click', function (e) {
-                e.preventDefault;
-                self.options.buttonClick(this, boardId);
-                // if(typeof(this.clickfn) === 'function')
-                //     this.clickfn(this);
-            });
-        }
-
-        function __findBoardJSON(id) {
-            var el = []
-            self.options.boards.map(function (board) {
-                if (board.id === id) {
-                    return el.push(board)
-                }
-            })
-            return el[0]
-        }
-
-
-        //init plugin
-        this.init();
-    };
-}());
-
-
-},{"dragula":11}],4:[function(require,module,exports){
-module.exports = function atoa (a, n) { return Array.prototype.slice.call(a, n); }
-
-},{}],5:[function(require,module,exports){
-'use strict';
-
-var ticky = require('ticky');
-
-module.exports = function debounce (fn, args, ctx) {
-  if (!fn) { return; }
-  ticky(function run () {
-    fn.apply(ctx || null, args || []);
-  });
-};
-
-},{"ticky":12}],6:[function(require,module,exports){
-'use strict';
-
-var atoa = require('atoa');
-var debounce = require('./debounce');
-
-module.exports = function emitter (thing, options) {
-  var opts = options || {};
-  var evt = {};
-  if (thing === undefined) { thing = {}; }
-  thing.on = function (type, fn) {
-    if (!evt[type]) {
-      evt[type] = [fn];
-    } else {
-      evt[type].push(fn);
-    }
-    return thing;
-  };
-  thing.once = function (type, fn) {
-    fn._once = true; // thing.off(fn) still works!
-    thing.on(type, fn);
-    return thing;
-  };
-  thing.off = function (type, fn) {
-    var c = arguments.length;
-    if (c === 1) {
-      delete evt[type];
-    } else if (c === 0) {
-      evt = {};
-    } else {
-      var et = evt[type];
-      if (!et) { return thing; }
-      et.splice(et.indexOf(fn), 1);
-    }
-    return thing;
-  };
-  thing.emit = function () {
-    var args = atoa(arguments);
-    return thing.emitterSnapshot(args.shift()).apply(this, args);
-  };
-  thing.emitterSnapshot = function (type) {
-    var et = (evt[type] || []).slice(0);
-    return function () {
-      var args = atoa(arguments);
-      var ctx = this || thing;
-      if (type === 'error' && opts.throws !== false && !et.length) { throw args.length === 1 ? args[0] : args; }
-      et.forEach(function emitter (listen) {
-        if (opts.async) { debounce(listen, args, ctx); } else { listen.apply(ctx, args); }
-        if (listen._once) { thing.off(type, listen); }
-      });
-      return thing;
-    };
-  };
-  return thing;
-};
-
-},{"./debounce":5,"atoa":4}],7:[function(require,module,exports){
-(function (global){
-'use strict';
-
-var customEvent = require('custom-event');
-var eventmap = require('./eventmap');
-var doc = global.document;
-var addEvent = addEventEasy;
-var removeEvent = removeEventEasy;
-var hardCache = [];
-
-if (!global.addEventListener) {
-  addEvent = addEventHard;
-  removeEvent = removeEventHard;
-}
-
-module.exports = {
-  add: addEvent,
-  remove: removeEvent,
-  fabricate: fabricateEvent
-};
-
-function addEventEasy (el, type, fn, capturing) {
-  return el.addEventListener(type, fn, capturing);
-}
-
-function addEventHard (el, type, fn) {
-  return el.attachEvent('on' + type, wrap(el, type, fn));
-}
-
-function removeEventEasy (el, type, fn, capturing) {
-  return el.removeEventListener(type, fn, capturing);
-}
-
-function removeEventHard (el, type, fn) {
-  var listener = unwrap(el, type, fn);
-  if (listener) {
-    return el.detachEvent('on' + type, listener);
-  }
-}
-
-function fabricateEvent (el, type, model) {
-  var e = eventmap.indexOf(type) === -1 ? makeCustomEvent() : makeClassicEvent();
-  if (el.dispatchEvent) {
-    el.dispatchEvent(e);
-  } else {
-    el.fireEvent('on' + type, e);
-  }
-  function makeClassicEvent () {
-    var e;
-    if (doc.createEvent) {
-      e = doc.createEvent('Event');
-      e.initEvent(type, true, true);
-    } else if (doc.createEventObject) {
-      e = doc.createEventObject();
-    }
-    return e;
-  }
-  function makeCustomEvent () {
-    return new customEvent(type, { detail: model });
-  }
-}
-
-function wrapperFactory (el, type, fn) {
-  return function wrapper (originalEvent) {
-    var e = originalEvent || global.event;
-    e.target = e.target || e.srcElement;
-    e.preventDefault = e.preventDefault || function preventDefault () { e.returnValue = false; };
-    e.stopPropagation = e.stopPropagation || function stopPropagation () { e.cancelBubble = true; };
-    e.which = e.which || e.keyCode;
-    fn.call(el, e);
-  };
-}
-
-function wrap (el, type, fn) {
-  var wrapper = unwrap(el, type, fn) || wrapperFactory(el, type, fn);
-  hardCache.push({
-    wrapper: wrapper,
-    element: el,
-    type: type,
-    fn: fn
-  });
-  return wrapper;
-}
-
-function unwrap (el, type, fn) {
-  var i = find(el, type, fn);
-  if (i) {
-    var wrapper = hardCache[i].wrapper;
-    hardCache.splice(i, 1); // free up a tad of memory
-    return wrapper;
-  }
-}
-
-function find (el, type, fn) {
-  var i, item;
-  for (i = 0; i < hardCache.length; i++) {
-    item = hardCache[i];
-    if (item.element === el && item.type === type && item.fn === fn) {
-      return i;
-    }
-  }
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./eventmap":8,"custom-event":9}],8:[function(require,module,exports){
-(function (global){
-'use strict';
-
-var eventmap = [];
-var eventname = '';
-var ron = /^on/;
-
-for (eventname in global) {
-  if (ron.test(eventname)) {
-    eventmap.push(eventname.slice(2));
-  }
-}
-
-module.exports = eventmap;
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],9:[function(require,module,exports){
-(function (global){
-
-var NativeCustomEvent = global.CustomEvent;
-
-function useNative () {
-  try {
-    var p = new NativeCustomEvent('cat', { detail: { foo: 'bar' } });
-    return  'cat' === p.type && 'bar' === p.detail.foo;
-  } catch (e) {
-  }
-  return false;
-}
-
-/**
- * Cross-browser `CustomEvent` constructor.
- *
- * https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent.CustomEvent
- *
- * @public
- */
-
-module.exports = useNative() ? NativeCustomEvent :
-
-// IE >= 9
-'function' === typeof document.createEvent ? function CustomEvent (type, params) {
-  var e = document.createEvent('CustomEvent');
-  if (params) {
-    e.initCustomEvent(type, params.bubbles, params.cancelable, params.detail);
-  } else {
-    e.initCustomEvent(type, false, false, void 0);
-  }
-  return e;
-} :
-
-// IE <= 8
-function CustomEvent (type, params) {
-  var e = document.createEventObject();
-  e.type = type;
-  if (params) {
-    e.bubbles = Boolean(params.bubbles);
-    e.cancelable = Boolean(params.cancelable);
-    e.detail = params.detail;
-  } else {
-    e.bubbles = false;
-    e.cancelable = false;
-    e.detail = void 0;
-  }
-  return e;
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],10:[function(require,module,exports){
 'use strict';
 
 var cache = {};
@@ -903,8 +298,7 @@ module.exports = {
   rm: rmClass
 };
 
-},{}],11:[function(require,module,exports){
-(function (global){
+},{}],4:[function(require,module,exports){
 'use strict';
 
 var emitter = require('contra/emitter');
@@ -1415,9 +809,9 @@ function touchy (el, op, type, fn) {
     mousedown: 'MSPointerDown',
     mousemove: 'MSPointerMove'
   };
-  if (global.navigator.pointerEnabled) {
+  if (window.navigator.pointerEnabled) {
     crossvent[op](el, pointers[type], fn);
-  } else if (global.navigator.msPointerEnabled) {
+  } else if (window.navigator.msPointerEnabled) {
     crossvent[op](el, microsoft[type], fn);
   } else {
     crossvent[op](el, touch[type], fn);
@@ -1444,8 +838,8 @@ function getOffset (el) {
 }
 
 function getScroll (scrollProp, offsetProp) {
-  if (typeof global[offsetProp] !== 'undefined') {
-    return global[offsetProp];
+  if (typeof window[offsetProp] !== 'undefined') {
+    return window[offsetProp];
   }
   if (documentElement.clientHeight) {
     return documentElement[scrollProp];
@@ -1514,8 +908,252 @@ function getCoord (coord, e) {
 
 module.exports = dragula;
 
+},{"./classes":3,"contra/emitter":7,"crossvent":8}],5:[function(require,module,exports){
+module.exports = function atoa (a, n) { return Array.prototype.slice.call(a, n); }
+
+},{}],6:[function(require,module,exports){
+'use strict';
+
+var ticky = require('ticky');
+
+module.exports = function debounce (fn, args, ctx) {
+  if (!fn) { return; }
+  ticky(function run () {
+    fn.apply(ctx || null, args || []);
+  });
+};
+
+},{"ticky":11}],7:[function(require,module,exports){
+'use strict';
+
+var atoa = require('atoa');
+var debounce = require('./debounce');
+
+module.exports = function emitter (thing, options) {
+  var opts = options || {};
+  var evt = {};
+  if (thing === undefined) { thing = {}; }
+  thing.on = function (type, fn) {
+    if (!evt[type]) {
+      evt[type] = [fn];
+    } else {
+      evt[type].push(fn);
+    }
+    return thing;
+  };
+  thing.once = function (type, fn) {
+    fn._once = true; // thing.off(fn) still works!
+    thing.on(type, fn);
+    return thing;
+  };
+  thing.off = function (type, fn) {
+    var c = arguments.length;
+    if (c === 1) {
+      delete evt[type];
+    } else if (c === 0) {
+      evt = {};
+    } else {
+      var et = evt[type];
+      if (!et) { return thing; }
+      et.splice(et.indexOf(fn), 1);
+    }
+    return thing;
+  };
+  thing.emit = function () {
+    var args = atoa(arguments);
+    return thing.emitterSnapshot(args.shift()).apply(this, args);
+  };
+  thing.emitterSnapshot = function (type) {
+    var et = (evt[type] || []).slice(0);
+    return function () {
+      var args = atoa(arguments);
+      var ctx = this || thing;
+      if (type === 'error' && opts.throws !== false && !et.length) { throw args.length === 1 ? args[0] : args; }
+      et.forEach(function emitter (listen) {
+        if (opts.async) { debounce(listen, args, ctx); } else { listen.apply(ctx, args); }
+        if (listen._once) { thing.off(type, listen); }
+      });
+      return thing;
+    };
+  };
+  return thing;
+};
+
+},{"./debounce":6,"atoa":5}],8:[function(require,module,exports){
+(function (global){
+'use strict';
+
+var customEvent = require('custom-event');
+var eventmap = require('./eventmap');
+var doc = global.document;
+var addEvent = addEventEasy;
+var removeEvent = removeEventEasy;
+var hardCache = [];
+
+if (!global.addEventListener) {
+  addEvent = addEventHard;
+  removeEvent = removeEventHard;
+}
+
+module.exports = {
+  add: addEvent,
+  remove: removeEvent,
+  fabricate: fabricateEvent
+};
+
+function addEventEasy (el, type, fn, capturing) {
+  return el.addEventListener(type, fn, capturing);
+}
+
+function addEventHard (el, type, fn) {
+  return el.attachEvent('on' + type, wrap(el, type, fn));
+}
+
+function removeEventEasy (el, type, fn, capturing) {
+  return el.removeEventListener(type, fn, capturing);
+}
+
+function removeEventHard (el, type, fn) {
+  var listener = unwrap(el, type, fn);
+  if (listener) {
+    return el.detachEvent('on' + type, listener);
+  }
+}
+
+function fabricateEvent (el, type, model) {
+  var e = eventmap.indexOf(type) === -1 ? makeCustomEvent() : makeClassicEvent();
+  if (el.dispatchEvent) {
+    el.dispatchEvent(e);
+  } else {
+    el.fireEvent('on' + type, e);
+  }
+  function makeClassicEvent () {
+    var e;
+    if (doc.createEvent) {
+      e = doc.createEvent('Event');
+      e.initEvent(type, true, true);
+    } else if (doc.createEventObject) {
+      e = doc.createEventObject();
+    }
+    return e;
+  }
+  function makeCustomEvent () {
+    return new customEvent(type, { detail: model });
+  }
+}
+
+function wrapperFactory (el, type, fn) {
+  return function wrapper (originalEvent) {
+    var e = originalEvent || global.event;
+    e.target = e.target || e.srcElement;
+    e.preventDefault = e.preventDefault || function preventDefault () { e.returnValue = false; };
+    e.stopPropagation = e.stopPropagation || function stopPropagation () { e.cancelBubble = true; };
+    e.which = e.which || e.keyCode;
+    fn.call(el, e);
+  };
+}
+
+function wrap (el, type, fn) {
+  var wrapper = unwrap(el, type, fn) || wrapperFactory(el, type, fn);
+  hardCache.push({
+    wrapper: wrapper,
+    element: el,
+    type: type,
+    fn: fn
+  });
+  return wrapper;
+}
+
+function unwrap (el, type, fn) {
+  var i = find(el, type, fn);
+  if (i) {
+    var wrapper = hardCache[i].wrapper;
+    hardCache.splice(i, 1); // free up a tad of memory
+    return wrapper;
+  }
+}
+
+function find (el, type, fn) {
+  var i, item;
+  for (i = 0; i < hardCache.length; i++) {
+    item = hardCache[i];
+    if (item.element === el && item.type === type && item.fn === fn) {
+      return i;
+    }
+  }
+}
+
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./classes":10,"contra/emitter":6,"crossvent":7}],12:[function(require,module,exports){
+},{"./eventmap":9,"custom-event":10}],9:[function(require,module,exports){
+(function (global){
+'use strict';
+
+var eventmap = [];
+var eventname = '';
+var ron = /^on/;
+
+for (eventname in global) {
+  if (ron.test(eventname)) {
+    eventmap.push(eventname.slice(2));
+  }
+}
+
+module.exports = eventmap;
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],10:[function(require,module,exports){
+(function (global){
+
+var NativeCustomEvent = global.CustomEvent;
+
+function useNative () {
+  try {
+    var p = new NativeCustomEvent('cat', { detail: { foo: 'bar' } });
+    return  'cat' === p.type && 'bar' === p.detail.foo;
+  } catch (e) {
+  }
+  return false;
+}
+
+/**
+ * Cross-browser `CustomEvent` constructor.
+ *
+ * https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent.CustomEvent
+ *
+ * @public
+ */
+
+module.exports = useNative() ? NativeCustomEvent :
+
+// IE >= 9
+'function' === typeof document.createEvent ? function CustomEvent (type, params) {
+  var e = document.createEvent('CustomEvent');
+  if (params) {
+    e.initCustomEvent(type, params.bubbles, params.cancelable, params.detail);
+  } else {
+    e.initCustomEvent(type, false, false, void 0);
+  }
+  return e;
+} :
+
+// IE <= 8
+function CustomEvent (type, params) {
+  var e = document.createEventObject();
+  e.type = type;
+  if (params) {
+    e.bubbles = Boolean(params.bubbles);
+    e.cancelable = Boolean(params.cancelable);
+    e.detail = params.detail;
+  } else {
+    e.bubbles = false;
+    e.cancelable = false;
+    e.detail = void 0;
+  }
+  return e;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],11:[function(require,module,exports){
 (function (setImmediate){
 var si = typeof setImmediate === 'function', tick;
 if (si) {
@@ -1526,4 +1164,364 @@ if (si) {
 
 module.exports = tick;
 }).call(this,require("timers").setImmediate)
-},{"timers":2}]},{},[3]);
+},{"timers":2}],12:[function(require,module,exports){
+/**
+ * jKanban
+ * Vanilla Javascript plugin for manage kanban boards
+ *
+ * @site: http://www.riccardotartaglia.it/jkanban/
+ * @author: Riccardo Tartaglia
+ */
+
+//Require dragula
+var dragula = require('dragula');
+
+(function () {
+
+    this.jKanban = function () {
+        var self = this;
+        this.element = '';
+        this.container = '';
+        this.boardContainer = [];
+        this.dragula = dragula;
+        this.drake = '';
+        this.drakeBoard = '';
+        this.addItemButton = false;
+        this.buttonContent = '+';
+        defaults = {
+            element: '',
+            gutter: '15px',
+            widthBoard: '250px',
+            responsive: '700',
+            responsivePercentage: false,
+            boards: [],
+            dragBoards: true,
+            addItemButton: false,
+            buttonContent: '+',
+            dragEl: function (el, source) {
+            },
+            dragendEl: function (el) {
+            },
+            dropEl: function (el, target, source, sibling) {
+            },
+            dragBoard: function (el, source) {
+            },
+            dragendBoard: function (el) {
+            },
+            dropBoard: function (el, target, source, sibling) {
+            },
+            click: function (el) {
+            },
+            buttonClick: function (el, boardId) {
+            }
+        };
+
+        if (arguments[0] && typeof arguments[0] === "object") {
+            this.options = __extendDefaults(defaults, arguments[0]);
+        }
+
+        this.init = function () {
+            //set initial boards
+            __setBoard();
+            //set drag with dragula
+            if (window.innerWidth > self.options.responsive) {
+
+                //Init Drag Board
+                self.drakeBoard = self.dragula([self.container], {
+                    moves: function (el, source, handle, sibling) {
+                        if (!self.options.dragBoards) return false;
+                        return (handle.classList.contains('kanban-board-header') || handle.classList.contains('kanban-title-board'));
+                    },
+                    accepts: function (el, target, source, sibling) {
+                        return target.classList.contains('kanban-container');
+                    },
+                    revertOnSpill: true,
+                    direction: 'horizontal',
+                })
+                    .on('drag', function (el, source) {
+                        el.classList.add('is-moving');
+                        self.options.dragBoard(el, source);
+                        if (typeof(el.dragfn) === 'function')
+                            el.dragfn(el, source);
+                    })
+                    .on('dragend', function (el) {
+                        el.classList.remove('is-moving');
+                        self.options.dragendBoard(el);
+                        if (typeof(el.dragendfn) === 'function')
+                            el.dragendfn(el);
+                    })
+                    .on('drop', function (el, target, source, sibling) {
+                        el.classList.remove('is-moving');
+                        self.options.dropBoard(el, target, source, sibling);
+                        if (typeof(el.dropfn) === 'function')
+                            el.dropfn(el, target, source, sibling);
+                    });
+
+                //Init Drag Item
+                self.drake = self.dragula(self.boardContainer, function () {
+                    revertOnSpill: true
+                })
+                    .on('cancel', function(el, container, source) {
+                        self.enableAllBoards();
+                    })
+                    .on('drag', function (el, source) {
+                        el.classList.add('is-moving');
+                        var boardJSON = __findBoardJSON(source.parentNode.dataset.id);
+                        if (boardJSON.dragTo !== undefined) {
+                            self.options.boards.map(function (board) {
+                                if (boardJSON.dragTo.indexOf(board.id) === -1 && board.id !== source.parentNode.dataset.id) {
+                                    self.findBoard(board.id).classList.add('disabled-board');
+                                }
+                            })
+                        }
+
+                        self.options.dragEl(el, source);
+                        if (el !== null && typeof(el.dragfn) === 'function')
+                            el.dragfn(el, source);
+                    })
+                    .on('dragend', function (el) {
+                        self.options.dragendEl(el);
+                        if (el !== null && typeof(el.dragendfn) === 'function')
+                            el.dragendfn(el);
+                    })
+                    .on('drop', function (el, target, source, sibling) {
+                        self.enableAllBoards();
+
+                        var boardJSON = __findBoardJSON(source.parentNode.dataset.id);
+                        if (boardJSON.dragTo !== undefined) {
+                            if (boardJSON.dragTo.indexOf(target.parentNode.dataset.id) === -1 && target.parentNode.dataset.id !== source.parentNode.dataset.id) {
+                                self.drake.cancel(true)
+                            }
+                        }
+                        if (el !== null) {
+                            self.options.dropEl(el, target, source, sibling);
+                            el.classList.remove('is-moving');
+                            if (typeof(el.dropfn) === 'function')
+                                el.dropfn(el, target, source, sibling);
+                        }
+                    })
+            }
+        };
+
+        this.enableAllBoards = function() {
+            var allB = document.querySelectorAll('.kanban-board');
+            if (allB.length > 0 && allB !== undefined) {
+                for (var i = 0; i < allB.length; i++) {
+                    allB[i].classList.remove('disabled-board');
+                }
+            }
+        };
+
+        this.addElement = function (boardID, element) {
+            var board = self.element.querySelector('[data-id="' + boardID + '"] .kanban-drag');
+            var nodeItem = document.createElement('div');
+            nodeItem.classList.add('kanban-item');
+            if (element.id) {
+              nodeItem.setAttribute('data-eid', element.id)
+            }
+            nodeItem.innerHTML = element.title;
+            //add function
+            nodeItem.clickfn = element.click;
+            nodeItem.dragfn = element.drag;
+            nodeItem.dragendfn = element.dragend;
+            nodeItem.dropfn = element.drop;
+            __onclickHandler(nodeItem);
+            board.appendChild(nodeItem);
+            return self;
+        };
+
+        this.addForm = function (boardID, formItem) {
+            var board = self.element.querySelector('[data-id="' + boardID + '"] .kanban-drag');
+            board.appendChild(formItem);
+            return self;
+        };
+
+        this.addBoards = function (boards) {
+            if (self.options.responsivePercentage) {
+                self.container.style.width = '100%';
+                self.options.gutter = '1%';
+                if (window.innerWidth > self.options.responsive) {
+                    var boardWidth = (100 - boards.length * 2) / boards.length;
+                } else {
+                    var boardWidth = 100 - (boards.length * 2);
+                }
+            } else {
+                var boardWidth = self.options.widthBoard;
+            }
+            var addButton = self.options.addItemButton;
+            var buttonContent = self.options.buttonContent;
+
+
+            //for on all the boards
+            for (var boardkey in boards) {
+                // single board
+                var board = boards[boardkey];
+                self.options.boards.push(board);
+
+                if (!self.options.responsivePercentage) {
+                    //add width to container
+                    if (self.container.style.width === '') {
+                        self.container.style.width = parseInt(boardWidth) + (parseInt(self.options.gutter) * 2) + 'px';
+                    } else {
+                        self.container.style.width = parseInt(self.container.style.width) + parseInt(boardWidth) + (parseInt(self.options.gutter) * 2) + 'px';
+                    }
+                }
+                //create node
+                var boardNode = document.createElement('div');
+                boardNode.dataset.id = board.id;
+                boardNode.classList.add('kanban-board');
+                //set style
+                if (self.options.responsivePercentage) {
+                    boardNode.style.width = boardWidth + '%';
+                } else {
+                    boardNode.style.width = boardWidth;
+                }
+                boardNode.style.marginLeft = self.options.gutter;
+                boardNode.style.marginRight = self.options.gutter;
+                // header board
+                var headerBoard = document.createElement('header');
+                if (board.class !== '' && board.class !== undefined)
+                    var allClasses = board.class.split(",");
+                else allClasses = [];
+                headerBoard.classList.add('kanban-board-header');
+                allClasses.map(function (value) {
+                    headerBoard.classList.add(value);
+                });
+                headerBoard.innerHTML = '<div class="kanban-title-board">' + board.title + '</div>';
+                // if add button is true, add button to the board
+                if (addButton) {
+                    var btn = document.createElement("BUTTON");
+                    var t = document.createTextNode(buttonContent);
+                    btn.setAttribute("class", "kanban-title-button btn btn-default btn-xs");
+                    btn.appendChild(t);
+                    //var buttonHtml = '<button class="kanban-title-button btn btn-default btn-xs">'+buttonContent+'</button>'
+                    headerBoard.appendChild(btn);
+                    __onButtonClickHandler(btn, board.id);
+                }
+                //content board
+                var contentBoard = document.createElement('main');
+                contentBoard.classList.add('kanban-drag');
+                //add drag to array for dragula
+                self.boardContainer.push(contentBoard);
+                for (var itemkey in board.item) {
+                    //create item
+                    var itemKanban = board.item[itemkey];
+                    var nodeItem = document.createElement('div');
+                    nodeItem.classList.add('kanban-item');
+                    nodeItem.dataset.eid = itemKanban.id;
+                    nodeItem.innerHTML = itemKanban.title;
+                    //add function
+                    nodeItem.clickfn = itemKanban.click;
+                    nodeItem.dragfn = itemKanban.drag;
+                    nodeItem.dragendfn = itemKanban.dragend;
+                    nodeItem.dropfn = itemKanban.drop;
+                    //add click handler of item
+                    __onclickHandler(nodeItem);
+                    contentBoard.appendChild(nodeItem);
+                }
+                //footer board
+                var footerBoard = document.createElement('footer');
+                //board assembly
+                boardNode.appendChild(headerBoard);
+                boardNode.appendChild(contentBoard);
+                boardNode.appendChild(footerBoard);
+                //board add
+                self.container.appendChild(boardNode);
+            }
+            return self;
+        }
+
+        this.findBoard = function (id) {
+            var el = self.element.querySelector('[data-id="' + id + '"]');
+            return el;
+        }
+
+        this.findElement = function (id) {
+            var el = self.element.querySelector('[data-eid="' + id + '"]');
+            return el;
+        }
+
+        this.getBoardElements = function (id) {
+            var board = self.element.querySelector('[data-id="' + id + '"] .kanban-drag');
+            return (board.childNodes);
+        }
+
+        this.removeElement = function (el) {
+            if (typeof(el) === 'string')
+                el = self.element.querySelector('[data-eid="' + el + '"]');
+            el.remove();
+            return self;
+        };
+
+        this.removeBoard = function (board) {
+            if (typeof(board) === 'string')
+                board = self.element.querySelector('[data-id="' + board + '"]');
+            board.remove();
+            return self;
+        }
+
+        // board button on click function
+        this.onButtonClick = function (el) {
+
+        }
+
+
+        //PRIVATE FUNCTION
+        function __extendDefaults(source, properties) {
+            var property;
+            for (property in properties) {
+                if (properties.hasOwnProperty(property)) {
+                    source[property] = properties[property];
+                }
+            }
+            return source;
+        }
+
+        function __setBoard() {
+            self.element = document.querySelector(self.options.element);
+            //create container
+            var boardContainer = document.createElement('div');
+            boardContainer.classList.add('kanban-container');
+            self.container = boardContainer;
+            //add boards
+            self.addBoards(self.options.boards);
+            //appends to container
+            self.element.appendChild(self.container);
+        };
+
+        function __onclickHandler(nodeItem, clickfn) {
+            nodeItem.addEventListener('click', function (e) {
+                e.preventDefault;
+                self.options.click(this);
+                if (typeof(this.clickfn) === 'function')
+                    this.clickfn(this);
+            });
+        }
+
+        function __onButtonClickHandler(nodeItem, boardId) {
+            nodeItem.addEventListener('click', function (e) {
+                e.preventDefault;
+                self.options.buttonClick(this, boardId);
+                // if(typeof(this.clickfn) === 'function')
+                //     this.clickfn(this);
+            });
+        }
+
+        function __findBoardJSON(id) {
+            var el = []
+            self.options.boards.map(function (board) {
+                if (board.id === id) {
+                    return el.push(board)
+                }
+            })
+            return el[0]
+        }
+
+
+        //init plugin
+        this.init();
+    };
+}());
+
+
+},{"dragula":4}]},{},[12]);

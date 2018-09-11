@@ -186,9 +186,8 @@ var dragula = require('dragula');
 
 
             //for on all the boards
-            for (var boardkey in boards) {
+            boards.forEach(function (board) {
                 // single board
-                var board = boards[boardkey];
                 self.options.boards.push(board);
 
                 if (!self.options.responsivePercentage) {
@@ -236,9 +235,8 @@ var dragula = require('dragula');
                 contentBoard.classList.add('kanban-drag');
                 //add drag to array for dragula
                 self.boardContainer.push(contentBoard);
-                for (var itemkey in board.item) {
+                board.item.forEach(function (item) {
                     //create item
-                    var itemKanban = board.item[itemkey];
                     var nodeItem = document.createElement('div');
                     nodeItem.classList.add('kanban-item');
                     nodeItem.dataset.eid = itemKanban.id;
@@ -251,7 +249,7 @@ var dragula = require('dragula');
                     //add click handler of item
                     __onclickHandler(nodeItem);
                     contentBoard.appendChild(nodeItem);
-                }
+                });
                 //footer board
                 var footerBoard = document.createElement('footer');
                 //board assembly
@@ -260,7 +258,7 @@ var dragula = require('dragula');
                 boardNode.appendChild(footerBoard);
                 //board add
                 self.container.appendChild(boardNode);
-            }
+            });
             return self;
         }
 
